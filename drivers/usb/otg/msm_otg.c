@@ -48,6 +48,17 @@
 #include <mach/msm_xo.h>
 #include <mach/msm_bus.h>
 #include <mach/rpm-regulator.h>
+#include <mach/oppo_project.h>
+
+#if 1
+#undef pr_debug
+#define pr_debug(fmt, ...) \
+	printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)	
+
+#undef dev_dbg
+#define dev_dbg(dev, format, arg...)		\
+	dev_printk(KERN_ERR, dev, format, ##arg)
+#endif
 
 #define MSM_USB_BASE	(motg->regs)
 #define DRIVER_NAME	"msm_otg"
@@ -78,6 +89,12 @@ enum msm_otg_phy_reg_mode {
 	USB_PHY_REG_LPM_OFF,
 };
 
+#ifdef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.2.24 add for OTG
+extern int smb358_chg_otg_enable(void);
+extern int smb358_chg_otg_disable(void);
+extern void smb358_chg_otg_read(void);
+#endif/*VENDOR_EDIT
+*/
 static char *override_phy_init;
 module_param(override_phy_init, charp, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(override_phy_init,
@@ -88,7 +105,11 @@ module_param(lpm_disconnect_thresh , uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(lpm_disconnect_thresh,
 	"Delay before entering LPM on USB disconnect");
 
+#ifndef VENDOR_EDIT
 static bool floated_charger_enable;
+#else
+static bool floated_charger_enable = 1;
+#endif
 module_param(floated_charger_enable , bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(floated_charger_enable,
 	"Whether to enable floated charger");
@@ -99,10 +120,16 @@ static bool debug_aca_enabled;
 static bool debug_bus_voting_enabled;
 static bool mhl_det_in_progress;
 
+#ifdef VENDOR_EDIT// Fanhong.Kong@ProDrv.CHG add 2014.2.28
+int power_type;
+#endif
+
 static struct regulator *hsusb_3p3;
 static struct regulator *hsusb_1p8;
 static struct regulator *hsusb_vdd;
+#ifndef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.2.24 add for OTG
 static struct regulator *vbus_otg;
+#endif/*VENDOR_EDIT*/
 static struct regulator *mhl_usb_hs_switch;
 static struct power_supply *psy;
 
@@ -1351,12 +1378,17 @@ static int msm_otg_notify_power_supply(struct msm_otg *motg, unsigned mA)
 		goto psy_error;
 	}
 
+	#ifdef VENDOR_EDIT
+	pr_debug("msm_otg_notify_power_supply, motg->cur_power = %d,mA = %d\n", motg->cur_power,mA);
+	#endif
+
 	if (motg->cur_power == 0 && mA > 2) {
 		/* Enable charging */
 		if (power_supply_set_online(psy, true))
 			goto psy_error;
 		if (power_supply_set_current_limit(psy, 1000*mA))
 			goto psy_error;
+	#ifndef VENDOR_EDIT
 	} else if (motg->cur_power > 0 && (mA == 0 || mA == 2)) {
 		/* Disable charging */
 		if (power_supply_set_online(psy, false))
@@ -1364,6 +1396,16 @@ static int msm_otg_notify_power_supply(struct msm_otg *motg, unsigned mA)
 		/* Set max current limit */
 		if (power_supply_set_current_limit(psy, 0))
 			goto psy_error;
+	#else//lijiada temp to debug
+	} else if (motg->cur_power > 0 && (mA == 0 || mA == 2)\
+	            && (power_type != POWER_SUPPLY_TYPE_USB && power_type != POWER_SUPPLY_TYPE_USB_CDP && power_type != POWER_SUPPLY_TYPE_USB_ACA)) {
+		/* Disable charging */
+		if (power_supply_set_online(psy, false))
+			goto psy_error;
+		/* Set max current limit */
+		if (power_supply_set_current_limit(psy, 0))
+			goto psy_error;
+	#endif
 	} else {
 		if (power_supply_set_online(psy, true))
 			goto psy_error;
@@ -1562,11 +1604,13 @@ static void msm_hsusb_vbus_power(struct msm_otg *motg, bool on)
 		return;
 	}
 
+	#ifndef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.2.24 add for OTG
 	if (!vbus_otg) {
 		pr_err("vbus_otg is NULL.");
 		return;
 	}
-
+	#endif/* VENDOR_EDIT*/
+	
 	/*
 	 * if entering host mode tell the charger to not draw any current
 	 * from usb before turning on the boost.
@@ -1575,14 +1619,24 @@ static void msm_hsusb_vbus_power(struct msm_otg *motg, bool on)
 	 */
 	if (on) {
 		msm_otg_notify_host_mode(motg, on);
-		ret = regulator_enable(vbus_otg);
+	#ifndef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.2.24 add for OTG
+		//ret = regulator_enable(vbus_otg);
+	#else/* VENDOR_EDIT*/	
+		ret = smb358_chg_otg_enable();
+		//smb358_chg_otg_read();
+	#endif/* VENDOR_EDIT*/
 		if (ret) {
 			pr_err("unable to enable vbus_otg\n");
 			return;
 		}
 		vbus_is_on = true;
 	} else {
-		ret = regulator_disable(vbus_otg);
+	#ifndef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.2.24 add for OTG
+		//ret = regulator_disable(vbus_otg);
+	#else/* VENDOR_EDIT*/	
+		ret = smb358_chg_otg_disable();
+		//smb358_chg_otg_read();
+	#endif/* VENDOR_EDIT*/
 		if (ret) {
 			pr_err("unable to disable vbus_otg\n");
 			return;
@@ -1606,6 +1660,7 @@ static int msm_otg_set_host(struct usb_otg *otg, struct usb_bus *host)
 		return -ENODEV;
 	}
 
+	#ifndef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.2.24 add for OTG
 	if (!motg->pdata->vbus_power && host) {
 		vbus_otg = devm_regulator_get(motg->phy.dev, "vbus_otg");
 		if (IS_ERR(vbus_otg)) {
@@ -1613,7 +1668,8 @@ static int msm_otg_set_host(struct usb_otg *otg, struct usb_bus *host)
 			return PTR_ERR(vbus_otg);
 		}
 	}
-
+	#endif/* VENDOR_EDIT*/
+	
 	if (!host) {
 		if (otg->phy->state == OTG_STATE_A_HOST) {
 			pm_runtime_get_sync(otg->phy->dev);
@@ -2616,8 +2672,13 @@ static void msm_otg_sm_work(struct work_struct *w)
 					pm_runtime_put_sync(otg->phy->dev);
 					break;
 				case USB_FLOATED_CHARGER:
+					#ifndef VENDOR_EDIT
 					msm_otg_notify_charger(motg,
 							IDEV_CHG_MAX);
+					#else
+					msm_otg_notify_charger(motg,
+							IDEV_CHG_MIN);
+					#endif
 					pm_runtime_put_noidle(otg->phy->dev);
 					pm_runtime_suspend(otg->phy->dev);
 					break;
@@ -3703,6 +3764,9 @@ static int otg_power_set_property_usb(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_TYPE:
 		psy->type = val->intval;
+#ifdef VENDOR_EDIT// Fanhong.Kong@ProDrv.CHG add 2014.2.28
+		power_type = psy->type;
+#endif
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		motg->usbin_health = val->intval;
@@ -4912,8 +4976,19 @@ static struct of_device_id msm_otg_dt_match[] = {
 	{}
 };
 
+#ifdef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.3.15 add for OTG
+static void poweroff_otg(struct platform_device *pdev)
+{
+	smb358_chg_otg_disable();
+	pr_debug("success to poweroff_otg\r\n");
+}
+#endif/*VENDOR_EDIT*/
+
 static struct platform_driver msm_otg_driver = {
 	.remove = __devexit_p(msm_otg_remove),
+#ifdef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.3.15 add for OTG
+	.shutdown = poweroff_otg,
+#endif/*VENDOR_EDIT*/
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,

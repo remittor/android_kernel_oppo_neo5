@@ -90,8 +90,33 @@ static irqreturn_t ngd_slim_interrupt(int irq, void *d)
 	void __iomem *ngd = dev->base + NGD_BASE(dev->ctrl.nr, dev->ver);
 	u32 stat = readl_relaxed(ngd + NGD_INT_STAT);
 	u32 pstat;
-
-	if ((stat & NGD_INT_MSG_BUF_CONTE) ||
+	
+//#ifndef VENDOR_EDIT
+//ggt@OnLineRD.Audio, 2014/03/31, Modify for 13095bug 423057 by case:01494963 patch
+/*
+	if (stat & NGD_INT_TX_MSG_SENT) {
+		writel_relaxed(NGD_INT_TX_MSG_SENT, ngd + NGD_INT_CLR);
+		// Make sure interrupt is cleared 
+		mb();
+		if (dev->wr_comp)
+			complete(dev->wr_comp);
+	} else if ((stat & NGD_INT_MSG_BUF_CONTE) ||
+		(stat & NGD_INT_MSG_TX_INVAL) || (stat & NGD_INT_DEV_ERR) ||
+		(stat & NGD_INT_TX_NACKED_2)) {
+		dev_err(dev->dev, "NGD interrupt error:0x%x", stat);
+		writel_relaxed(stat, ngd + NGD_INT_CLR);
+		// Guarantee that error interrupts are cleared 
+		mb();
+		if (((stat & NGD_INT_TX_NACKED_2) ||
+			(stat & NGD_INT_MSG_TX_INVAL))) {
+			dev->err = -EIO;
+		if (dev->wr_comp)
+			complete(dev->wr_comp);
+		}
+	}
+*/
+//#else /* VENDOR_EDIT */
+    if ((stat & NGD_INT_MSG_BUF_CONTE) ||
 		(stat & NGD_INT_MSG_TX_INVAL) || (stat & NGD_INT_DEV_ERR) ||
 		(stat & NGD_INT_TX_NACKED_2)) {
 		writel_relaxed(stat, ngd + NGD_INT_CLR);
@@ -99,18 +124,20 @@ static irqreturn_t ngd_slim_interrupt(int irq, void *d)
 
 		dev_err(dev->dev, "NGD interrupt error:0x%x, err:%d", stat,
 								dev->err);
+
 		/* Guarantee that error interrupts are cleared */
 		mb();
 		if (dev->wr_comp)
-			complete(dev->wr_comp);
-
-	} else if (stat & NGD_INT_TX_MSG_SENT) {
+ 			complete(dev->wr_comp);
+		} else if (stat & NGD_INT_TX_MSG_SENT) {
 		writel_relaxed(NGD_INT_TX_MSG_SENT, ngd + NGD_INT_CLR);
 		/* Make sure interrupt is cleared */
 		mb();
 		if (dev->wr_comp)
 			complete(dev->wr_comp);
 	}
+//#endif /* VENDOR_EDIT */
+
 	if (stat & NGD_INT_RX_MSG_RCVD) {
 		u32 rx_buf[10];
 		u8 len, i;

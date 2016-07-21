@@ -19,7 +19,6 @@
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
 #include <linux/iopoll.h>
-#include <linux/ratelimit.h>
 #include <media/msmb_isp.h>
 
 #include "msm_ispif.h"
@@ -50,6 +49,11 @@
 #define CDBG(fmt, args...) do { } while (0)
 #endif
 
+#ifdef VENDOR_EDIT
+/* OPPO 2014-4-20 zhengrong.zhang add for debug*/
+static bool flag = false;
+#endif
+
 static void msm_ispif_io_dump_reg(struct ispif_device *ispif)
 {
 	if (!ispif->enb_dump_reg)
@@ -63,6 +67,24 @@ static inline int msm_ispif_is_intf_valid(uint32_t csid_version,
 	return (csid_version <= CSID_VERSION_V22 && intf_type != VFE0) ?
 		false : true;
 }
+static struct msm_cam_clk_info ispif_8626_reset_clk_info[] = {
+	{"ispif_ahb_clk", -1},
+	{"camss_top_ahb_clk", -1},
+	{"csi0_ahb_clk", -1},
+	{"csi0_src_clk", -1},
+	{"csi0_phy_clk", -1},
+	{"csi0_clk", -1},
+	{"csi0_pix_clk", -1},
+	{"csi0_rdi_clk", -1},
+	{"csi1_ahb_clk", -1},
+	{"csi1_src_clk", -1},
+	{"csi1_phy_clk", -1},
+	{"csi1_clk", -1},
+	{"csi1_pix_clk", -1},
+	{"csi1_rdi_clk", -1},
+	{"camss_vfe_vfe_clk", -1},
+	{"camss_csi_vfe_clk", -1},
+};
 
 static struct msm_cam_clk_info ispif_8974_ahb_clk_info[] = {
 	{"ispif_ahb_clk", -1},
@@ -98,14 +120,24 @@ static int msm_ispif_reset_hw(struct ispif_device *ispif)
 	int rc = 0;
 	long timeout = 0;
 	struct clk *reset_clk[ARRAY_SIZE(ispif_8974_reset_clk_info)];
-
+	struct clk *reset_clk1[ARRAY_SIZE(ispif_8626_reset_clk_info)];
+	ispif->hw_num_isps = 1;
+	ispif->clk_idx = 0;
 	rc = msm_cam_clk_enable(&ispif->pdev->dev,
 		ispif_8974_reset_clk_info, reset_clk,
 		ARRAY_SIZE(ispif_8974_reset_clk_info), 1);
 	if (rc < 0) {
-		pr_err("%s: cannot enable clock, error = %d",
-			__func__, rc);
-	}
+		rc = msm_cam_clk_enable(&ispif->pdev->dev,
+			ispif_8626_reset_clk_info, reset_clk1,
+			ARRAY_SIZE(ispif_8626_reset_clk_info), 1);
+		if (rc < 0){
+			pr_err("%s: cannot enable clock, error = %d",
+				__func__, rc);}
+		else
+			ispif->clk_idx = 2;
+		}
+	else
+		ispif->clk_idx = 1;
 
 	init_completion(&ispif->reset_complete[VFE0]);
 	if (ispif->hw_num_isps > 1)
@@ -123,9 +155,16 @@ static int msm_ispif_reset_hw(struct ispif_device *ispif)
 	CDBG("%s: VFE0 done\n", __func__);
 	if (timeout <= 0) {
 		pr_err("%s: VFE0 reset wait timeout\n", __func__);
-		msm_cam_clk_enable(&ispif->pdev->dev,
-			ispif_8974_reset_clk_info, reset_clk,
+		rc = msm_cam_clk_enable(&ispif->pdev->dev,
+			ispif_8974_reset_clk_info, reset_clk, 
 			ARRAY_SIZE(ispif_8974_reset_clk_info), 0);
+		if (rc < 0){
+			rc = msm_cam_clk_enable(&ispif->pdev->dev,
+				ispif_8626_reset_clk_info, reset_clk1,
+				ARRAY_SIZE(ispif_8626_reset_clk_info), 0);
+			if (rc < 0)
+				pr_err("%s: VFE0 reset wait timeout\n", __func__);
+		}
 		return -ETIMEDOUT;
 	}
 
@@ -142,13 +181,23 @@ static int msm_ispif_reset_hw(struct ispif_device *ispif)
 			return -ETIMEDOUT;
 		}
 	}
-
+if (ispif->clk_idx == 1){
 	rc = msm_cam_clk_enable(&ispif->pdev->dev,
 		ispif_8974_reset_clk_info, reset_clk,
 		ARRAY_SIZE(ispif_8974_reset_clk_info), 0);
 	if (rc < 0) {
 		pr_err("%s: cannot disable clock, error = %d",
 			__func__, rc);
+	}
+	}
+if (ispif->clk_idx == 2){
+	rc = msm_cam_clk_enable(&ispif->pdev->dev,
+		ispif_8626_reset_clk_info, reset_clk1,
+		ARRAY_SIZE(ispif_8626_reset_clk_info), 0);
+	if (rc < 0) {
+		pr_err("%s: cannot disable clock, error = %d",
+			__func__, rc);
+		}
 	}
 	return rc;
 }
@@ -771,6 +820,13 @@ static void ispif_process_irq(struct ispif_device *ispif,
 	if (out[vfe_id].ispifIrqStatus0 &
 			ISPIF_IRQ_STATUS_PIX_SOF_MASK) {
 		ispif->sof_count[vfe_id].sof_cnt[PIX0]++;
+#ifdef VENDOR_EDIT
+            /* OPPO 2014-4-20 zhengrong.zhang add for debug*/
+            if(flag == true){
+                pr_err("%s: ISPIF SOF\n",__func__);
+                flag = false; 
+            }
+#endif
 	}
 	if (out[vfe_id].ispifIrqStatus0 &
 			ISPIF_IRQ_STATUS_RDI0_SOF_MASK) {
@@ -941,16 +997,18 @@ static int msm_ispif_init(struct ispif_device *ispif,
 		goto error_ahb;
 	}
 
-	if (of_device_is_compatible(ispif->pdev->dev.of_node,
-				    "qcom,ispif-v3.0")) {
-		/* currently HW reset is implemented for 8974 only */
-		msm_ispif_reset_hw(ispif);
-	}
+	msm_ispif_reset_hw(ispif);
 
 	rc = msm_ispif_reset(ispif);
 	if (rc == 0) {
 		ispif->ispif_state = ISPIF_POWER_UP;
-		CDBG("%s: power up done\n", __func__);
+#ifdef VENDOR_EDIT
+/* OPPO 2014-4-20 zhengrong.zhang add for debug*/
+            pr_err("%s: power up done\n", __func__);
+            flag = true;
+#else
+            CDBG("%s: power up done\n", __func__);
+#endif
 		goto end;
 	}
 
@@ -1050,8 +1108,7 @@ static long msm_ispif_subdev_ioctl(struct v4l2_subdev *sd,
 		return 0;
 	}
 	default:
-		pr_err_ratelimited("%s: invalid cmd 0x%x received\n",
-			__func__, cmd);
+		pr_err("%s: invalid cmd 0x%x received\n", __func__, cmd);
 		return -ENOIOCTLCMD;
 	}
 }
@@ -1199,7 +1256,6 @@ error_sd_register:
 
 static const struct of_device_id msm_ispif_dt_match[] = {
 	{.compatible = "qcom,ispif"},
-	{}
 };
 
 MODULE_DEVICE_TABLE(of, msm_ispif_dt_match);

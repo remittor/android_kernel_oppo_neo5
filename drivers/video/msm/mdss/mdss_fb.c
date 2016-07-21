@@ -53,6 +53,14 @@
 
 #include "mdss_fb.h"
 
+#ifdef VENDOR_EDIT
+//rendong.shi@BasicDrv.LCD modify 2014/03/21 for lcd-backlight in factory mode
+#include <mach/oppo_boot_mode.h>
+static int boot_mode = 0;
+#endif
+
+#include <mach/oppo_project.h>
+
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MDSS_FB_NUM 3
 #else
@@ -263,14 +271,69 @@ static ssize_t mdss_mdp_show_blank_event(struct device *dev,
 	return ret;
 }
 
+#ifdef VENDOR_EDIT
+/* caven.han  Add for set cabc */
+extern int set_cabc(int level);
+extern int cabc_mode;
+
+static ssize_t mdss_get_cabc(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	printk(KERN_INFO "get cabc mode = %d\n",cabc_mode);
+
+    return sprintf(buf, "%d\n", cabc_mode);
+}
+
+static ssize_t mdss_set_cabc(struct device *dev,
+                               struct device_attribute *attr,
+                               const char *buf, size_t count)
+{
+    int level = 0;
+    sscanf(buf, "%du", &level);
+    set_cabc(level);
+    return count;
+}
+
+#endif /*VENDOR_EDIT*/
+
+#ifdef VENDOR_EDIT
+/* guoling Add for set lcdoff test */
+extern struct mdss_dsi_ctrl_pdata *panel_data;
+static ssize_t mdss_mdp_lcdoff_event(struct device *dev,		struct device_attribute *attr, char *buf){
+    struct fb_info *fbi = dev_get_drvdata(dev);	
+    struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;	
+    pr_err("%s YXQ mfd=0x%p\n", __func__, mfd);	
+    if (!mfd)		
+        return -ENODEV;	
+    return mdss_fb_send_panel_event(mfd, MDSS_EVENT_PANEL_OFF, NULL);
+}
+#endif
+
 static DEVICE_ATTR(msm_fb_type, S_IRUGO, mdss_fb_get_type, NULL);
 static DEVICE_ATTR(msm_fb_split, S_IRUGO, mdss_fb_get_split, NULL);
 static DEVICE_ATTR(show_blank_event, S_IRUGO, mdss_mdp_show_blank_event, NULL);
+
+#ifdef VENDOR_EDIT
+/*Added by caven.han for set cabc */
+static DEVICE_ATTR(cabc, 0664, mdss_get_cabc, mdss_set_cabc);
+#endif 
+#ifdef VENDOR_EDIT
+/* guoling Add for set lcdoff test */
+static DEVICE_ATTR(lcdoff, S_IRUGO, mdss_mdp_lcdoff_event, NULL);
+#endif
 
 static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_type.attr,
 	&dev_attr_msm_fb_split.attr,
 	&dev_attr_show_blank_event.attr,
+#ifdef VENDOR_EDIT
+/* caven.han Add for set cabc */
+	&dev_attr_cabc.attr,
+#endif
+#ifdef VENDOR_EDIT	
+/* guoling Add for set lcdoff test */
+    &dev_attr_lcdoff.attr,
+#endif
 	NULL,
 };
 
@@ -403,6 +466,24 @@ static int mdss_fb_probe(struct platform_device *pdev)
 	else
 		mfd->mdp_sync_pt_data.threshold = 2;
 
+#ifdef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.5.6 add for logo 	
+	if(is_project(OPPO_14013))
+	{
+		if(get_Operator_Version() != 3)
+			memset(phys_to_virt(0x03200000 + 714*480*3), 0x00, 480*140*3);
+		
+	}
+	else if(is_project(OPPO_14033))
+	{
+		if(get_Operator_Version() != 3)
+			memset(phys_to_virt(0x03200000 + 540*800*3), 0x00, 160*540*3);
+	}
+	else
+	{		
+		if(get_Operator_Version() != 3)
+			memset(phys_to_virt(0x03200000 + 1080*720*3), 0x00, 200*720*3);
+	}
+#endif/*VENDOR_EDIT*/	
 	return rc;
 }
 
@@ -637,6 +718,8 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 	int (*update_ad_input)(struct msm_fb_data_type *mfd);
 	u32 temp = bkl_lvl;
 
+	#ifndef VENDOR_EDIT
+	//rendong.shi@BasicDrv.LCD modify 03/21/2014 for factory mode lcd-backlight
 	if (((!mfd->panel_power_on && mfd->dcm_state != DCM_ENTER)
 		|| !mfd->bl_updated) && !IS_CALIB_MODE_BL(mfd)) {
 		mfd->unset_bl_level = bkl_lvl;
@@ -644,7 +727,21 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 	} else {
 		mfd->unset_bl_level = 0;
 	}
-
+	#else
+	boot_mode =get_boot_mode();	
+	if(boot_mode == MSM_BOOT_MODE__FACTORY){
+			mfd->unset_bl_level = 0;				
+	}else{
+		if (((!mfd->panel_power_on && mfd->dcm_state != DCM_ENTER)
+		|| !mfd->bl_updated) && !IS_CALIB_MODE_BL(mfd)) {
+		mfd->unset_bl_level = bkl_lvl;
+		return;
+		} else {
+			mfd->unset_bl_level = 0;
+		}
+	}
+	#endif
+   
 	pdata = dev_get_platdata(&mfd->pdev->dev);
 
 	if ((pdata) && (pdata->set_backlight)) {

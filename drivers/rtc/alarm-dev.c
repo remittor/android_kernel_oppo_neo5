@@ -40,9 +40,18 @@ module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 		} \
 	} while (0)
 
+
+#ifndef VENDOR_EDIT
+//Fangfang.Hui@Prd.PlatSrv.OTA, 2014/01/15, modify for alarm_powerup, transplanted from find7 author yuyi
 #define ANDROID_ALARM_WAKEUP_MASK ( \
 	ANDROID_ALARM_RTC_WAKEUP_MASK | \
 	ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP_MASK)
+#else /* VENDOR_EDIT */
+#define ANDROID_ALARM_WAKEUP_MASK ( \
+	ANDROID_ALARM_RTC_WAKEUP_MASK | \
+	ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP_MASK | \
+	ANDROID_ALARM_RTC_POWERUP_MASK)
+#endif /* VENDOR_EDIT */
 
 /* support old usespace code */
 #define ANDROID_ALARM_SET_OLD               _IOW('a', 2, time_t) /* set alarm */
@@ -98,10 +107,16 @@ static long alarm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				wake_unlock(&alarm_wake_lock);
 		}
 		alarm_enabled &= ~alarm_type_mask;
+
+#ifndef VENDOR_EDIT 
+//Fangfang.Hui@Prd.PlatSrv.OTA, 2014/01/15, modify for clear alarm register, transplanted from find7 author yuyi
 		if (alarm_type == ANDROID_ALARM_RTC_POWEROFF_WAKEUP)
-			if (!copy_from_user(&new_alarm_time,
-				(void __user *)arg, sizeof(new_alarm_time)))
-				set_power_on_alarm(new_alarm_time.tv_sec, 0);
+			if (!copy_from_user(&new_alarm_time,				(void __user *)arg, sizeof(new_alarm_time)))				set_power_on_alarm(new_alarm_time.tv_sec, 0);
+#else /* VENDOR_EDIT */
+		if ((alarm_type == ANDROID_ALARM_RTC_POWEROFF_WAKEUP)||\
+		(alarm_type == ANDROID_ALARM_RTC_POWERUP))
+			set_power_on_alarm(new_alarm_time.tv_sec, 0);
+#endif /* VENDOR_EDIT */
 		spin_unlock_irqrestore(&alarm_slock, flags);
 		break;
 
@@ -129,10 +144,20 @@ from_old_alarm_set:
 		alarm_start_range(&alarms[alarm_type],
 			timespec_to_ktime(new_alarm_time),
 			timespec_to_ktime(new_alarm_time));
+
+#ifndef VENDOR_EDIT
+//Fangfang.Hui@Prd.PlatSrv.OTA, 2014/01/15, modify for alarm_powerup, transplanted from find7 author yuyi
 		if ((alarm_type == ANDROID_ALARM_RTC_POWEROFF_WAKEUP) &&
 				(ANDROID_ALARM_BASE_CMD(cmd) ==
 				 ANDROID_ALARM_SET(0)))
 			set_power_on_alarm(new_alarm_time.tv_sec, 1);
+#else /* VENDOR_EDIT */
+		if (((alarm_type == ANDROID_ALARM_RTC_POWEROFF_WAKEUP)||\
+		    (alarm_type == ANDROID_ALARM_RTC_POWERUP)) &&
+				(ANDROID_ALARM_BASE_CMD(cmd) ==
+				 ANDROID_ALARM_SET(0)))
+			set_power_on_alarm(new_alarm_time.tv_sec, 1);
+#endif /* VENDOR_EDIT */
 		spin_unlock_irqrestore(&alarm_slock, flags);
 		if (ANDROID_ALARM_BASE_CMD(cmd) != ANDROID_ALARM_SET_AND_WAIT(0)
 		    && cmd != ANDROID_ALARM_SET_AND_WAIT_OLD)
@@ -171,6 +196,11 @@ from_old_alarm_set:
 		break;
 	case ANDROID_ALARM_GET_TIME(0):
 		switch (alarm_type) {
+
+#ifdef VENDOR_EDIT
+//Fangfang.Hui@Prd.PlatSrv.OTA, 2014/01/15, add for alarm_powerup, transplanted from find7 author yuyi
+		case ANDROID_ALARM_RTC_POWERUP: /* mwalker to get rtc alarm powerup */
+#endif
 		case ANDROID_ALARM_RTC_WAKEUP:
 		case ANDROID_ALARM_RTC:
 		case ANDROID_ALARM_RTC_POWEROFF_WAKEUP:

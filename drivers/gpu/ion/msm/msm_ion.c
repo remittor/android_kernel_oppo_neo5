@@ -36,9 +36,13 @@
 #define ION_COMPAT_MEM_RESERVE_STR "qcom,msm-ion-reserve"
 
 static struct ion_device *idev;
-static int num_heaps;
-static struct ion_heap **heaps;
-
+#ifdef VENDOR_EDIT
+//OPPO Scott Huang Added for printing more info of lmk
+//static int num_heaps;
+//static struct ion_heap **heaps;
+int num_heaps;
+struct ion_heap **heaps;
+#endif
 struct ion_heap_desc {
 	unsigned int id;
 	enum ion_heap_type type;

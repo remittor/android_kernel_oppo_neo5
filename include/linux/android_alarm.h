@@ -26,6 +26,10 @@ enum android_alarm_type {
 	ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP,
 	ANDROID_ALARM_ELAPSED_REALTIME,
 	ANDROID_ALARM_RTC_POWEROFF_WAKEUP,
+#ifdef VENDOR_EDIT
+//Fangfang.Hui@Prd.PlatSrv.OTA, 2014/01/15, Add for alarm_powerup, transplanted from find7 author yuyi
+	ANDROID_ALARM_RTC_POWERUP,
+#endif /* VENDOR_EDIT */
 	ANDROID_ALARM_SYSTEMTIME,
 
 	ANDROID_ALARM_TYPE_COUNT,
@@ -78,6 +82,13 @@ ktime_t alarm_get_elapsed_realtime(void);
 int alarm_set_rtc(const struct timespec ts);
 void alarm_update_timedelta(struct timespec tv, struct timespec ts);
 
+#ifdef VENDOR_EDIT
+//Fangfang.Hui@Prd.PlatSrv.OTA, 2014/01/15, Add for alarm_powerup, transplanted from find7 author yuyi
+/* mwalker for alarm powerup */
+int alarm_rtc_powerup_get(struct timespec *up_time);
+int alarm_rtc_powerup_set(struct timespec *up_time);
+void alarm_rtc_powerup_clear(void);
+#endif /* VENDOR_EDIT */
 #endif
 
 enum android_alarm_return_flags {
@@ -88,6 +99,11 @@ enum android_alarm_return_flags {
 	ANDROID_ALARM_ELAPSED_REALTIME_MASK =
 				1U << ANDROID_ALARM_ELAPSED_REALTIME,
 	ANDROID_ALARM_RTC_POWEROFF_WAKEUP_MASK = 1U << ANDROID_ALARM_RTC_POWEROFF_WAKEUP,
+#ifdef VENDOR_EDIT
+//Fangfang.Hui@Prd.PlatSrv.OTA, 2014/01/15, Add for alarm_powerup, transplanted from find7 author yuyi
+/* mwalker for alarm powerup */
+	ANDROID_ALARM_RTC_POWERUP_MASK = 1U << ANDROID_ALARM_RTC_POWERUP,
+#endif /* VENDOR_EDIT */
 	ANDROID_ALARM_SYSTEMTIME_MASK = 1U << ANDROID_ALARM_SYSTEMTIME,
 	ANDROID_ALARM_TIME_CHANGE_MASK = 1U << 16
 };

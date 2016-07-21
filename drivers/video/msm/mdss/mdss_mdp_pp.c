@@ -2834,7 +2834,6 @@ gamut_config_exit:
 	mutex_unlock(&mdss_pp_mutex);
 	return ret;
 }
-
 static u32 pp_hist_read(char __iomem *v_addr,
 				struct pp_hist_col_info *hist_info)
 {
@@ -3090,7 +3089,7 @@ hist_stop_exit:
 
 static int pp_hist_collect(struct mdp_histogram_data *hist,
 				struct pp_hist_col_info *hist_info,
-				char __iomem *ctl_base, u32 expect_sum)
+				char __iomem *ctl_base,u32 expect_sum)
 {
 	int wait_ret, ret = 0;
 	u32 timeout, sum;

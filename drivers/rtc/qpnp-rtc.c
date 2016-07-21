@@ -261,6 +261,9 @@ qpnp_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 
 	rtc_tm_to_time(&alarm->time, &secs);
 
+#ifndef VENDOR_EDIT
+//Fangfang.Hui@Prd.PlatSrv.OTA, 2014/01/15, modify for alarm_powerup, transplanted from find7 author yuyi
+	rtc_tm_to_time(&alarm->time, &secs);
 	/*
 	 * Read the current RTC time and verify if the alarm time is in the
 	 * past. If yes, return invalid
@@ -276,6 +279,45 @@ qpnp_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alarm)
 		dev_err(dev, "Trying to set alarm in the past\n");
 		return -EINVAL;
 	}
+#else /*VENDOR_EDIT*/
+	/*
+	 * Open a door to clear alarm register since the boot alarm may 
+	 * becomes corrupt. mwalker
+	 */
+	memset(&rtc_tm, 0, sizeof(rtc_tm));
+	if (unlikely(!memcmp(&alarm->time, &rtc_tm, sizeof(rtc_tm)))) {
+		pr_debug("%s clear pm8058 alarm register\n", __func__);
+		
+		secs = 0;
+	} else {
+		/* Check if the alarm is valid */
+		rc = rtc_valid_tm(&alarm->time);
+		if (rc < 0) {
+			pr_err("%s: Alarm time invalid\n", __func__);
+			return -EINVAL;
+		}
+
+		rtc_tm_to_time(&alarm->time, &secs);
+
+		/*
+		 * Read the current RTC time and verify if the alarm time is in the
+		 * past. If yes, return invalid.
+		 */
+		rc = qpnp_rtc_read_time(dev, &rtc_tm);
+		if (rc) {
+			dev_err(dev, "Unamble to read RTC time\n");
+			return -EINVAL;
+		}
+
+		rtc_tm_to_time(&rtc_tm, &secs_rtc);
+		if (secs < secs_rtc) {
+			dev_err(dev, "Trying to set alarm in the past\n");
+			return -EINVAL;
+		}
+	}
+#endif /*VENDOR_EDIT*/
+
+
 
 	value[0] = secs & 0xFF;
 	value[1] = (secs >> 8) & 0xFF;

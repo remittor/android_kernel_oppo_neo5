@@ -57,6 +57,7 @@ static irqreturn_t mmc_cd_gpio_irqt(int irq, void *dev_id)
 		/* Schedule a card detection after a debounce timeout */
 		mmc_detect_change(host, msecs_to_jiffies(100));
 	}
+
 out:
 	return IRQ_HANDLED;
 }

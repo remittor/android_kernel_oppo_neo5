@@ -757,8 +757,7 @@ static int nfc_parse_dt(struct device *dev, struct qca199x_platform_data *pdata)
 
 	r = of_property_read_string(np, "qcom,clk-src", &pdata->clk_src);
 
-	if ((!strcmp(pdata->clk_src, "GPCLK")) ||
-	    (!strcmp(pdata->clk_src, "GPCLK2")))
+	if (!strcmp(pdata->clk_src, "GPCLK"))
 		pdata->clk_src_gpio = of_get_named_gpio(np,
 				"qcom,clk-en-gpio", 0);
 
@@ -875,14 +874,6 @@ static int qca199x_probe(struct i2c_client *client,
 		} else {
 			goto err_dis_gpio;
 		}
-	} else if (!strcmp(platform_data->clk_src, "GPCLK2")) {
-		if (gpio_is_valid(platform_data->clk_src_gpio)) {
-			nfc_clk  = clk_get(&client->dev, "core_clk_pvt");
-			if (nfc_clk == NULL)
-				goto err_dis_gpio;
-		} else {
-			goto err_dis_gpio;
-		}
 	} else {
 		nfc_clk = NULL;
 	}
@@ -983,8 +974,7 @@ err_dis_gpio:
 	r = gpio_direction_input(platform_data->dis_gpio);
 	if (r)
 		dev_err(&client->dev, "nfc-nci probe: Unable to set direction\n");
-	if ((!strcmp(platform_data->clk_src, "GPCLK")) ||
-            (!strcmp(platform_data->clk_src, "GPCLK2"))) {
+	if (!strcmp(platform_data->clk_src, "GPCLK")) {
 		r = gpio_direction_input(platform_data->clk_src_gpio);
 		if (r)
 			dev_err(&client->dev, "nfc-nci probe: Unable to set direction\n");

@@ -228,6 +228,12 @@ struct msm_pproc_queue_buf_info {
 
 #define VIDIOC_MSM_CPP_QUEUE_BUF \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 14, struct msm_camera_v4l2_ioctl_t)
+/*Added by jianbo.sun@Camera 2013-12-27 start for add quick start*/
+#ifdef VENDOR_EDIT
+#define VIDIOC_MSM_CPP_INIT_HW \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 15, struct msm_camera_v4l2_ioctl_t)
+#endif
+/*Added by jianbo.sun@Camera 2013-12-27 end*/
 
 #define V4L2_EVENT_CPP_FRAME_DONE  (V4L2_EVENT_PRIVATE_START + 0)
 #define V4L2_EVENT_VPE_FRAME_DONE  (V4L2_EVENT_PRIVATE_START + 1)

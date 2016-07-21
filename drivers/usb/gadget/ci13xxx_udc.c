@@ -73,6 +73,15 @@
 /******************************************************************************
  * DEFINE
  *****************************************************************************/
+#if 1
+#undef pr_debug
+#define pr_debug(fmt, ...) \
+		printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__) 
+	
+#undef dev_dbg
+#define dev_dbg(dev, format, arg...)		\
+		dev_printk(KERN_ERR, dev, format, ##arg)
+#endif
 
 #define DMA_ADDR_INVALID	(~(dma_addr_t)0)
 #define USB_MAX_TIMEOUT		25 /* 25msec timeout */
@@ -3677,10 +3686,13 @@ static irqreturn_t udc_irq(void)
 		isr_statistics.hndl.buf[isr_statistics.hndl.idx++] = intr;
 		isr_statistics.hndl.idx &= ISR_MASK;
 		isr_statistics.hndl.cnt++;
-
-		/* order defines priority - do NOT change it */
+   		/* order defines priority - do NOT change it */
 		if (USBi_URI & intr) {
 			isr_statistics.uri++;
+			#ifdef VENDOR_EDIT    
+			//zhanhua.li@Prd.BasicDrv.USB,2014/02/26 add for debug    
+			printk("%s enter,intr=%x\n",__func__,intr);   
+			#endif /*VENDOR_EDIT*/
 			isr_reset_handler(udc);
 		}
 		if (USBi_PCI & intr) {

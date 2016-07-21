@@ -12,6 +12,12 @@
 #ifndef __WCD9XXX_MBHC_H__
 #define __WCD9XXX_MBHC_H__
 
+#ifdef VENDOR_EDIT
+//liuyan add 2013-3-1, headset report
+#include<linux/switch.h>
+//liuyan add end
+#endif
+
 #include "wcd9xxx-resmgr.h"
 
 #define WCD9XXX_CFILT_FAST_MODE 0x00
@@ -232,6 +238,11 @@ struct wcd9xxx_mbhc_config {
 	bool use_int_rbias;
 	bool do_recalibration;
 	bool use_vddio_meas;
+#ifdef VENDOR_EDIT
+/*xiaojun.lv@PhoneDpt.AudioDrv, 2014/03/16, add for 14033 spk control*/
+    int cdc_bootst_spk_gpio;
+    int cdc_enable_spk_gpio;
+#endif
 };
 
 struct wcd9xxx_cfilt_mode {
@@ -330,6 +341,11 @@ struct wcd9xxx_mbhc {
 
 	struct notifier_block nblock;
 
+	/*OPPO 2014-05-23 zhzhyon Add for headset detect*/
+	#ifdef VENDOR_EDIT
+	bool hs_remove;
+	#endif
+	/*OPPO 2014-05-23 zhzhyon Add end*/
 	bool micbias_enable;
 	int (*micbias_enable_cb) (struct snd_soc_codec*,  bool);
 
@@ -342,6 +358,12 @@ struct wcd9xxx_mbhc {
 	bool update_z;
 	/* Holds codec specific interrupt mapping */
 	const struct wcd9xxx_mbhc_intr *intr_ids;
+
+#ifdef VENDOR_EDIT
+	//liuyan 2013-3-1,add for headset report
+	struct switch_dev wcd9xxx_sdev;
+	//liuyan add end
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_poke;

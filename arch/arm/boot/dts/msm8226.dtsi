@@ -235,7 +235,12 @@
 
 	uart6: uart@f9922000 { /*BLSP #1, UART #6 */
 		compatible = "qcom,msm-hsuart-v14";
-		status = "ok";
+//caven@basic.drv added for error gpio 20,21,22,23 been used by uart6 in 13095
+//#ifdef VENDOR_EDIT
+		status = "disable";
+//#else
+//		status = "ok";
+//#endif
 		reg = <0xf9922000 0x1C0>,
 			<0xf9904000 0x19000>;
 		reg-names = "core_mem", "bam_mem";
@@ -316,15 +321,27 @@
 		HSUSB_1p8-supply = <&pm8226_l10>;
 		HSUSB_3p3-supply = <&pm8226_l20>;
 		qcom,vdd-voltage-level = <1 5 7>;
-
+//#ifndef VENDOR_EDIT
+//Lycan.Wang@Prd.BasicDrv, 2014-01-26 Modify for usb eye diagram test
+//		qcom,hsusb-otg-phy-init-seq =
+//			<0x44 0x80 0x68 0x81 0x24 0x82 0x13 0x83 0xffffffff>;
+//#else /* VENDOR_EDIT */
 		qcom,hsusb-otg-phy-init-seq =
-			<0x44 0x80 0x68 0x81 0x24 0x82 0x13 0x83 0xffffffff>;
+//			<0x74 0x80 0x68 0x81 0x33 0x82 0x13 0x83 0xffffffff>;//Fanhong.Kong@ProDrv,2014.3.24 add for eye diagram 14%
+			<0x74 0x80 0x6a 0x81 0x33 0x82 0x13 0x83 0xffffffff>;
+//#endif /* VENDOR_EDIT */
+
 		qcom,hsusb-otg-phy-type = <2>;
-		qcom,hsusb-otg-mode = <1>;
+//#ifndef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.2.24 add for OTG
+//		qcom,hsusb-otg-mode = <1>;
+//#else /* VENDOR_EDIT */
+		qcom,hsusb-otg-mode = <3>;
+//#endif /* VENDOR_EDIT */
 		qcom,hsusb-otg-otg-control = <2>;
 		qcom,hsusb-otg-disable-reset;
 		qcom,dp-manual-pullup;
-
+//#ifndef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.2.24 add for OTG
+//#endif
 		qcom,msm-bus,name = "usb";
 		qcom,msm-bus,num-cases = <3>;
 		qcom,msm-bus,num-paths = <1>;
@@ -450,22 +467,22 @@
 		compatible = "qcom,msm8226-audio-tapan";
 		qcom,model = "msm8226-tapan-snd-card";
 		qcom,tapan-mclk-clk-freq = <9600000>;
-		qcom,prim-auxpcm-gpio-clk  = <&msmgpio 63 0>;
-		qcom,prim-auxpcm-gpio-sync = <&msmgpio 64 0>;
-		qcom,prim-auxpcm-gpio-din  = <&msmgpio 65 0>;
-		qcom,prim-auxpcm-gpio-dout = <&msmgpio 66 0>;
-		qcom,prim-auxpcm-gpio-set = "prim-gpio-prim";
+		qcom,prim-auxpcm-gpio-clk  = <&msmgpio 49 0>;
+		qcom,prim-auxpcm-gpio-sync = <&msmgpio 50 0>;
+		qcom,prim-auxpcm-gpio-din  = <&msmgpio 52 0>;
+		qcom,prim-auxpcm-gpio-dout = <&msmgpio 51 0>;
+		qcom,prim-auxpcm-gpio-set = "prim-gpio-tert";
 	};
 
 	sound-9302 {
 		compatible = "qcom,msm8226-audio-tapan";
 		qcom,model = "msm8226-tapan9302-snd-card";
 		qcom,tapan-mclk-clk-freq = <9600000>;
-		qcom,prim-auxpcm-gpio-clk  = <&msmgpio 63 0>;
-		qcom,prim-auxpcm-gpio-sync = <&msmgpio 64 0>;
-		qcom,prim-auxpcm-gpio-din  = <&msmgpio 65 0>;
-		qcom,prim-auxpcm-gpio-dout = <&msmgpio 66 0>;
-		qcom,prim-auxpcm-gpio-set = "prim-gpio-prim";
+		qcom,prim-auxpcm-gpio-clk  = <&msmgpio 49 0>;
+		qcom,prim-auxpcm-gpio-sync = <&msmgpio 50 0>;
+		qcom,prim-auxpcm-gpio-din  = <&msmgpio 51 0>;
+		qcom,prim-auxpcm-gpio-dout = <&msmgpio 52 0>;
+		qcom,prim-auxpcm-gpio-set = "prim-gpio-tert";
 		qcom,tapan-codec-9302;
 	};
 
@@ -628,6 +645,16 @@
                         qcom,msm-dai-q6-dev-id = <32770>;
                 };
 	};
+
+	        qcom,msm-dai-mi2s {
+                compatible = "qcom,msm-dai-mi2s";
+                qcom,msm-dai-q6-mi2s-tert {
+                        compatible = "qcom,msm-dai-q6-mi2s";
+                        qcom,msm-dai-q6-mi2s-dev-id = <2>;
+                        qcom,msm-mi2s-rx-lines = <1>;
+                        qcom,msm-mi2s-tx-lines = <2>;
+                };
+        };
 
 	qcom,msm-pcm-hostless {
 		compatible = "qcom,msm-pcm-hostless";
@@ -1030,10 +1057,12 @@
 		reg = <0xf9927000 0x1000>;
 		interrupt-names = "qup_err_intr";
 		interrupts = <0 99 0>;
-		qcom,i2c-bus-freq = <384000>;
+		/*qcom,i2c-bus-freq = <384000>;*//*yixue.ge modify*/
+		qcom,i2c-bus-freq = <400000>;
 		qcom,i2c-src-freq = <19200000>;
 		qcom,sda-gpio = <&msmgpio 18 0>;
 		qcom,scl-gpio = <&msmgpio 19 0>;
+                qcom,clk-ctl-xfer;
 	};
 
 	qcom,acpuclk@f9011050 {
@@ -1149,14 +1178,26 @@
 		/* GPIO output to mss */
 		qcom,gpio-force-stop = <&smp2pgpio_ssr_smp2p_1_out 0 0>;
 	};
-
+//#ifdef VENDOR_EDIT
+//WeiHong.Li@OnLineRD.AirService.Module, 2013/10/24, modify for OEM DATA region 
+/* NOTICE: 
+add region(0x05900000 0x100000) for OEM data ram for NV backup.
+*/
+//	memory_hole: qcom,msm-mem-hole {
+//		compatible = "qcom,msm-mem-hole";
+//		qcom,memblock-remove = <0x08400000 0x4000000
+//					0x0d200000 0x2300000
+//					0x0fa00000 0x500000>; /* Address and Size of Hole */
+//	};
+//#else 
 	memory_hole: qcom,msm-mem-hole {
 		compatible = "qcom,msm-mem-hole";
 		qcom,memblock-remove = <0x08400000 0x4000000
 					0x0d200000 0x2300000
-					0x0fa00000 0x500000>; /* Address and Size of Hole */
+					0x0fa00000 0x500000
+					0x07f00000 0x100000>; /* Address and Size of Hole */
 	};
-
+//#endif
 	tsens: tsens@fc4a8000 {
 		compatible = "qcom,msm-tsens";
 		reg = <0xfc4a8000 0x2000>,
@@ -1244,8 +1285,14 @@
                 qcom,msm-bus,num-cases = <2>;
                 qcom,msm-bus,num-paths = <1>;
                 qcom,msm-bus,vectors-KBps =
-                                <1 618 0 0>,
-                                <1 618 0 800>;
+//#ifndef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.3.5 add for ftm sleep
+//                            	<1 618 0 0>,
+//                           	<1 618 0 800>;
+//#else
+				<54 618 0 0>,
+				<54 618 0 800>;
+//#endif
+
 	};
 
 	qcom,tz-log@fe805720 {
@@ -1443,6 +1490,16 @@
 		qcom,hw-settle-time = <0>;
 		qcom,fast-avg-setup = <0>;
 	};
+	chan@26 {
+		label = "mpp7_adc";
+		reg = <0x26>; // channel for MPP7
+		qcom,decimation = <0>;			//512 sampling rate
+		qcom,pre-div-channel-scaling = <0>;	//1:1 scaling 
+		qcom,calibration-type = "absolute";	//Use 625mV & 1.25V reference voltage
+		qcom,scale-function = <0>;		//convert raw adc code to voltage
+		qcom,hw-settle-time = <0>;		//200us
+		qcom,fast-avg-setup = <0>;		//with only one average measurement
+	};
 
 	chan@30 {
 		label = "batt_therm";
@@ -1580,4 +1637,20 @@
 	qcom,chg-misc@1600 {
 		status = "ok";
 	};
+};
+
+&usb_otg {
+//Fanhong.Kong@ProDrv,2014.2.24 add for OTG
+	#address-cells = <0>;
+	interrupt-parent = <&usb_otg>;
+	interrupts = <0 1 2>;
+	#interrupt-cells = <1>;
+	interrupt-map-mask = <0xffffffff>;
+	interrupt-map = <0 &intc 0 134 0
+			1 &intc 0 140 0
+			2 &spmi_bus 0x0 0x0 0x9 0x0>;
+	interrupt-names = "core_irq", "async_irq", "pmic_id_irq";
+
+	qcom,hsusb-otg-mode = <3>;
+	vbus_otg-supply = <&pm8226_chg_otg>;
 };

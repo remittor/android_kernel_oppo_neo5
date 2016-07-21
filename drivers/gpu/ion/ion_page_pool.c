@@ -24,7 +24,9 @@
 #include <linux/shrinker.h>
 #include "ion_priv.h"
 
-/* #define DEBUG_PAGE_POOL_SHRINKER */
+//oppo open the defenition for debug ion:
+#define DEBUG_PAGE_POOL_SHRINKER 
+//end.
 
 static struct plist_head pools = PLIST_HEAD_INIT(pools);
 static struct shrinker shrinker;
@@ -123,6 +125,12 @@ void ion_page_pool_free(struct ion_page_pool *pool, struct page* page)
 {
 	int ret;
 
+    // added by Scott Huang for blocking single page to be cached in IOMMU, begin
+    if (pool->order == 0) {
+        ion_page_pool_free_pages(pool, page);
+        return;
+    }
+	// added end.
 	ret = ion_page_pool_add(pool, page);
 	if (ret)
 		ion_page_pool_free_pages(pool, page);

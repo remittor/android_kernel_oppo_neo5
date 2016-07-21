@@ -1851,3 +1851,75 @@ void __init ion_reserve(struct ion_platform_data *data)
 			data->heaps[i].size);
 	}
 }
+
+#ifdef VENDOR_EDIT
+//OPPO Scott Huang Added for printing more info of lmk
+extern int num_heaps;
+extern struct ion_heap **heaps;
+
+void print_ion_iommu_info(void)
+{   
+    int i;
+    for (i = 0; i < num_heaps; i++) {
+    	struct ion_heap *heap = heaps[i];        
+    	struct ion_device *dev = heap->dev;
+    	struct rb_node *n;
+    	size_t total_size = 0;
+    	size_t total_orphaned_size = 0;
+
+
+        pr_err("=========heap[%s]======================\n", heap->name);
+    	pr_err("%16.s %16.s %16.s\n", "client", "pid", "size");
+    	pr_err("----------------------------------------------------\n");
+
+    	down_read(&dev->lock);
+    	for (n = rb_first(&dev->clients); n; n = rb_next(n)) {
+    		struct ion_client *client = rb_entry(n, struct ion_client,
+    						     node);
+    		size_t size = ion_debug_heap_total(client, heap->id);
+    		if (!size)
+    			continue;
+    		if (client->task) {
+    			char task_comm[TASK_COMM_LEN];
+
+    			get_task_comm(task_comm, client->task);
+    			pr_err("%16.s %16u %16u\n", task_comm,
+    				   client->pid, size);
+    		} else {
+    			pr_err("%16.s %16u %16u\n", client->name,
+    				   client->pid, size);
+    		}
+    	}
+    	up_read(&dev->lock);
+
+        pr_err("----------------------------------------------------\n");
+    	pr_err("orphaned allocations (info is from last known client):"
+    		   "\n");
+        
+    	mutex_lock(&dev->buffer_lock);
+    	for (n = rb_first(&dev->buffers); n; n = rb_next(n)) {
+    		struct ion_buffer *buffer = rb_entry(n, struct ion_buffer,
+    						     node);
+    		if (buffer->heap->id != heap->id)
+    			continue;
+    		total_size += buffer->size;
+    		if (!buffer->handle_count) {
+    			pr_err("%16.s %16u %16u %d %d\n", buffer->task_comm,
+    				   buffer->pid, buffer->size, buffer->kmap_cnt,
+    				   atomic_read(&buffer->ref.refcount));
+    			total_orphaned_size += buffer->size;
+    		}
+    	}
+    	mutex_unlock(&dev->buffer_lock);
+        
+    	pr_err("----------------------------------------------------\n");
+    	pr_err("%16.s %16u\n", "total orphaned",
+    		   total_orphaned_size);
+    	pr_err("%16.s %16u\n", "total ", total_size);
+    	pr_err("----------------------------------------------------\n");
+    }
+}
+
+EXPORT_SYMBOL(print_ion_iommu_info);
+#endif
+

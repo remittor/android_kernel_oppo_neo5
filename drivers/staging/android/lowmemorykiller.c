@@ -47,8 +47,11 @@
 #else
 #define _ZONE ZONE_NORMAL
 #endif
-
-static uint32_t lowmem_debug_level = 1;
+#ifdef VENDOR_EDIT
+//OPPO Scott Huang Added for printing more info of lmk
+//static uint32_t lowmem_debug_level = 1;
+static uint32_t lowmem_debug_level = 2;
+#endif
 static int lowmem_adj[6] = {
 	0,
 	1,
@@ -225,7 +228,57 @@ void tune_lmk_param(int *other_free, int *other_file, struct shrink_control *sc)
 			     "%d\n", *other_free, *other_file);
 	}
 }
+#ifdef VENDOR_EDIT
+//OPPO Scott Huang Added for printing more info of lmk
+void print_all_process_tasksize(void)
+{
+	struct task_struct *tsk;
+    int tasksize;
+    int ltzero_total = 0;
+    int eqzero_total = 0;
+    int lgzero_total = 0;    
+    int total = 0;
 
+    lowmem_print(2, "--------------print_all_process_tasksize------------\n");
+    
+    rcu_read_lock();
+    for_each_process(tsk) {
+        struct task_struct *p;
+        int oom_score_adj;
+
+        if (tsk->flags & PF_KTHREAD)
+            continue;
+
+        p = find_lock_task_mm(tsk);
+        if (!p)
+            continue;
+
+        oom_score_adj = p->signal->oom_score_adj;
+        //tasksize = get_mm_rss(p->mm);
+        tasksize = get_mm_counter(p->mm, MM_ANONPAGES);
+        total += tasksize;        
+        if (oom_score_adj > 0) lgzero_total += tasksize;
+        if (oom_score_adj < 0) ltzero_total += tasksize;
+        if (oom_score_adj == 0) eqzero_total += tasksize;
+        
+        task_unlock(p);       
+
+        /* if task no longer has any memory ignore it */
+        if (test_task_flag(tsk, TIF_MM_RELEASED)) {
+            lowmem_print(2, "###Process(TIF_MM_RELEASED) %d (%s), adj %d, size %d\n",
+                     p->pid, p->comm, oom_score_adj, tasksize);
+        } else {        
+            lowmem_print(2, "###Process %d (%s), adj %d, size %d\n",
+                     p->pid, p->comm, oom_score_adj, tasksize);
+        }     
+    }
+    rcu_read_unlock();
+    lowmem_print(2, "###print_all_process_tasksize, total tasksize: %d-%d-%d, %d pages\n", 
+        lgzero_total, eqzero_total, ltzero_total, total);    
+}
+
+extern void print_ion_iommu_info(void);
+#endif
 static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 {
 	struct task_struct *tsk;
@@ -239,14 +292,23 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	int array_size = ARRAY_SIZE(lowmem_adj);
 	int other_free;
 	int other_file;
+#ifdef VENDOR_EDIT
+//OPPO Scott Huang Added for printing more info of lmk
+	int bk_other_free;
+	int bk_other_file;    
+    int minfree;
+#endif
 	unsigned long nr_to_scan = sc->nr_to_scan;
 
 	if (nr_to_scan > 0) {
 		if (mutex_lock_interruptible(&scan_mutex) < 0)
 			return 0;
 	}
-
-	other_free = global_page_state(NR_FREE_PAGES);
+#ifdef VENDOR_EDIT
+//OPPO Scott Huang Added for printing more info of lmk
+//other_free = global_page_state(NR_FREE_PAGES);
+	bk_other_free = other_free = global_page_state(NR_FREE_PAGES);
+#endif
 
 	if (global_page_state(NR_SHMEM) + total_swapcache_pages <
 		global_page_state(NR_FILE_PAGES))
@@ -255,14 +317,21 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 						total_swapcache_pages;
 	else
 		other_file = 0;
+#ifdef VENDOR_EDIT
+//OPPO Scott Huang Added for printing more info of lmk
 
+    bk_other_file = other_file;
 	tune_lmk_param(&other_free, &other_file, sc);
-
+#endif
 	if (lowmem_adj_size < array_size)
 		array_size = lowmem_adj_size;
 	if (lowmem_minfree_size < array_size)
 		array_size = lowmem_minfree_size;
 	for (i = 0; i < array_size; i++) {
+#ifdef VENDOR_EDIT
+//OPPO Scott Huang Added for printing more info of lmk
+        minfree = lowmem_minfree[i];
+#endif
 		if (other_free < lowmem_minfree[i] &&
 		    other_file < lowmem_minfree[i]) {
 			min_score_adj = lowmem_adj[i];
@@ -340,6 +409,24 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		lowmem_print(1, "send sigkill to %d (%s), adj %d, size %d\n",
 			     selected->pid, selected->comm,
 			     selected_oom_score_adj, selected_tasksize);
+		#ifdef VENDOR_EDIT
+ 		//Added by Scott Huang for printing more info of lmk
+        lowmem_print(1, "Killing '%s' (%d), adj %hd,\n" \
+				"   to free %ldkB on behalf of '%s' (%d) because\n" \
+				"   cache %ldkB is below limit %ldkB for oom_score_adj %hd\n" \
+				"   Free memory is %ldkB above reserved\n" \
+                "   total free/cached pages: %ld-%ld\n",
+			     selected->comm, selected->pid,
+			     selected_oom_score_adj,
+			     selected_tasksize * (long)(PAGE_SIZE / 1024),
+			     current->comm, current->pid,
+			     other_file * (long)(PAGE_SIZE / 1024),
+			     minfree * (long)(PAGE_SIZE / 1024),
+			     min_score_adj,
+			     other_free * (long)(PAGE_SIZE / 1024),
+			     (long)bk_other_free, (long)bk_other_file
+			     );
+		#endif				 
 		lowmem_deathpending_timeout = jiffies + HZ;
 		send_sig(SIGKILL, selected, 0);
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
@@ -347,6 +434,15 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		rcu_read_unlock();
 		/* give the system time to free up the memory */
 		msleep_interruptible(20);
+		#ifdef VENDOR_EDIT
+		//OPPO Scott Huang Added for
+        /* when LMK kill carmera process, print all information, this is for test */
+        if (selected_oom_score_adj <= 0)
+        {
+            print_all_process_tasksize();
+            print_ion_iommu_info();
+        }
+		#endif
 	} else
 		rcu_read_unlock();
 

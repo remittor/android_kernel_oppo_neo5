@@ -606,6 +606,39 @@ power_attr(wake_lock);
 power_attr(wake_unlock);
 #endif
 
+#ifdef VENDOR_EDIT
+/* OPPO 2012-11-05 Van Modify begin for add interface start reason and boot_mode begin */
+extern char pwron_event[];
+
+static ssize_t startup_mode_show(struct kobject *kobj, struct kobj_attribute *attr,
+        char *buf)
+{
+    return sprintf(buf, "%s", pwron_event);
+}
+
+static ssize_t startup_mode_store(struct kobject *kobj, struct kobj_attribute *attr,
+        const char *buf, size_t n)
+{
+    return 0;
+}
+power_attr(startup_mode);
+
+extern char boot_mode[];
+static ssize_t app_boot_show(struct kobject *kobj, struct kobj_attribute *attr,
+        char *buf)
+{
+    return sprintf(buf, "%s", boot_mode);
+}
+
+static ssize_t app_boot_store(struct kobject *kobj, struct kobj_attribute *attr,
+        const char *buf, size_t n)
+{   
+    return 0;
+}
+power_attr(app_boot);
+/* OPPO 2012-11-05 Van Modify begin for add interface start reason and boot_mode end */
+#endif /* VENDOR_EDIT */
+
 static struct attribute *g[] = {
 	&state_attr.attr,
 #ifdef CONFIG_PM_TRACE
@@ -632,6 +665,12 @@ static struct attribute *g[] = {
 	&wake_unlock_attr.attr,
 #endif
 #endif
+#ifdef VENDOR_EDIT
+    /* OPPO 2012-11-05 Van Modify begin for add interface start reason and boot_mode begin */
+    &app_boot_attr.attr,
+    &startup_mode_attr.attr,
+    /* OPPO 2012-11-05 Van Modify begin for add interface start reason and boot_mode end */
+#endif /* VENDOR_EDIT */
 	NULL,
 };
 

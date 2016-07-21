@@ -22,6 +22,9 @@ obj-$(CONFIG_INPUT_JOYSTICK)	+= joystick/
 obj-$(CONFIG_INPUT_TABLET)	+= tablet/
 obj-$(CONFIG_INPUT_TOUCHSCREEN)	+= touchscreen/
 obj-$(CONFIG_INPUT_MISC)	+= misc/
+# ifdef VENDOR_EDIT //Yixue.Ge add for oppo touchpanel driver 2013-12-26
+obj-$(CONFIG_INPUT_OPPO)	+= oppo/
+# endif
 
 obj-$(CONFIG_INPUT_APMPOWER)	+= apm-power.o
 obj-$(CONFIG_INPUT_OF_MATRIX_KEYMAP) += of_keymap.o

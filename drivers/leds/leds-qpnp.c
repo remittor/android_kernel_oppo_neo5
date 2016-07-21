@@ -27,6 +27,13 @@
 #include <linux/regulator/consumer.h>
 #include <linux/delay.h>
 
+/* OPPO 2014-3-25 zhengrong.zhang add begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#define OPPO_USE_EXTERNAL_CHARGER
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang add end */
+
+
 #define WLED_MOD_EN_REG(base, n)	(base + 0x60 + n*0x10)
 #define WLED_IDAC_DLY_REG(base, n)	(WLED_MOD_EN_REG(base, n) + 0x01)
 #define WLED_FULL_SCALE_REG(base, n)	(WLED_IDAC_DLY_REG(base, n) + 0x01)
@@ -414,8 +421,15 @@ struct flash_config_data {
 	bool	flash_reg_get;
 	bool	flash_on;
 	bool	torch_on;
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 	struct regulator *flash_boost_reg;
 	struct regulator *torch_boost_reg;
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
+
 };
 
 /**
@@ -481,10 +495,42 @@ struct qpnp_led_data {
 	int			max_current;
 	bool			default_on;
 	int			turn_off_delay_ms;
+	#ifdef VENDOR_EDIT //yixue.ge add for modify max light
+	int			max_duty;
+	#endif
 };
 
 static int num_kpbl_leds_on;
 
+/* OPPO 2014-3-25 zhengrong.zhang add begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifdef OPPO_USE_EXTERNAL_CHARGER
+static int
+qpnp_led_masked_write_new(struct qpnp_led_data *led, u16 addr, u8 mask, u8 val)
+{
+	int rc;
+	u8 reg;
+
+	rc = spmi_ext_register_readl(led->spmi_dev->ctrl, 0,
+		addr, &reg, 1);
+	if (rc) {
+		dev_err(&led->spmi_dev->dev,
+			"Unable to read from addr=%x, rc(%d)\n", addr, rc);
+	}
+
+	reg &= ~mask;
+	reg |= val;
+
+	rc = spmi_ext_register_writel(led->spmi_dev->ctrl, 0,
+		addr, &reg, 1);
+	if (rc)
+		dev_err(&led->spmi_dev->dev,
+			"Unable to write to addr=%x, rc(%d)\n", addr, rc);
+	return rc;
+}
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang add end */
 static int
 qpnp_led_masked_write(struct qpnp_led_data *led, u16 addr, u8 mask, u8 val)
 {
@@ -525,7 +571,39 @@ static void qpnp_dump_regs(struct qpnp_led_data *led, u8 regs[], u8 array_size)
 	}
 	pr_debug("===== %s LED register dump end =====\n", led->cdev.name);
 }
-
+/* OPPO 2014-3-25 zhengrong.zhang add begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifdef OPPO_USE_EXTERNAL_CHARGER
+#define USB_SUSPEND_BIT	BIT(0)
+static void
+qpnp_flash_reg_en(struct qpnp_led_data *led, bool enable)
+{
+	if(enable)
+	{
+	qpnp_led_masked_write_new(led,	0x1347,	USB_SUSPEND_BIT, USB_SUSPEND_BIT);
+	qpnp_led_masked_write_new(led,	0x13D0,	0xFF, 0xA5);
+	qpnp_led_masked_write_new(led,	0x13EA,	0xFF, 0x2F);
+	qpnp_led_masked_write_new(led,	0x1546,	0x80, 0x80);
+	}
+	else
+	{
+	qpnp_led_masked_write_new(led,	0x1546,	0x80, 0x00);
+	qpnp_led_masked_write_new(led,	0x10D0,	0xFF, 0xA5);
+	qpnp_led_masked_write_new(led,	0x10EA,	0xFF, 0x20);
+	usleep(2000);
+	qpnp_led_masked_write_new(led,	0x10D0,	0xFF, 0xA5);
+	qpnp_led_masked_write_new(led,	0x10EA,	0xFF, 0x00);
+	qpnp_led_masked_write_new(led,	0x13D0,	0xFF, 0xA5);
+	qpnp_led_masked_write_new(led,	0x13EA,	0xFF, 0x00);
+	usleep(1000);
+	qpnp_led_masked_write_new(led,	0x1347,	USB_SUSPEND_BIT, 0x0);
+	
+	
+	}
+}
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang add end */
 static int qpnp_wled_sync(struct qpnp_led_data *led)
 {
 	int rc;
@@ -710,8 +788,15 @@ static int qpnp_mpp_set(struct qpnp_led_data *led)
 		}
 		if (led->mpp_cfg->pwm_mode == PWM_MODE) {
 			pwm_disable(led->mpp_cfg->pwm_cfg->pwm_dev);
+		#ifndef VENDOR_EDIT //yixue.ge add for modify max light
 			duty_us = (led->mpp_cfg->pwm_cfg->pwm_period_us *
 					led->cdev.brightness) / LED_FULL;
+		#else
+			if(led->max_duty < LED_FULL)
+				led->max_duty = LED_FULL;
+			duty_us = (led->mpp_cfg->pwm_cfg->pwm_period_us *
+					led->cdev.brightness) / led->max_duty;
+		#endif					
 			/*config pwm for brightness scaling*/
 			rc = pwm_config(led->mpp_cfg->pwm_cfg->pwm_dev,
 					duty_us,
@@ -819,6 +904,9 @@ static int qpnp_flash_regulator_operate(struct qpnp_led_data *led, bool on)
 
 	if (!regulator_on && !led->flash_cfg->flash_on) {
 		for (i = 0; i < led->num_leds; i++) {
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 			if (led_array[i].flash_cfg->flash_reg_get) {
 				rc = regulator_enable(
 					led_array[i].flash_cfg->\
@@ -829,8 +917,20 @@ static int qpnp_flash_regulator_operate(struct qpnp_led_data *led, bool on)
 									rc);
 					return rc;
 				}
+#endif
+#ifdef OPPO_USE_EXTERNAL_CHARGER
+				qpnp_flash_reg_en(led, true);
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 				led->flash_cfg->flash_on = true;
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 			}
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 			break;
 		}
 	}
@@ -840,7 +940,13 @@ static int qpnp_flash_regulator_operate(struct qpnp_led_data *led, bool on)
 regulator_turn_off:
 	if (regulator_on && led->flash_cfg->flash_on) {
 		for (i = 0; i < led->num_leds; i++) {
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 			if (led_array[i].flash_cfg->flash_reg_get) {
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */	
 				rc = qpnp_led_masked_write(led,
 					FLASH_ENABLE_CONTROL(led->base),
 					FLASH_ENABLE_MASK,
@@ -850,7 +956,9 @@ regulator_turn_off:
 						"Enable reg write failed(%d)\n",
 						rc);
 				}
-
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 				rc = regulator_disable(led_array[i].flash_cfg->\
 							flash_boost_reg);
 				if (rc) {
@@ -859,8 +967,20 @@ regulator_turn_off:
 									rc);
 					return rc;
 				}
+#endif
+#ifdef OPPO_USE_EXTERNAL_CHARGER
+				qpnp_flash_reg_en(led,false);
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */	
 				led->flash_cfg->flash_on = false;
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 			}
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 			break;
 		}
 	}
@@ -876,12 +996,21 @@ static int qpnp_torch_regulator_operate(struct qpnp_led_data *led, bool on)
 		goto regulator_turn_off;
 
 	if (!led->flash_cfg->torch_on) {
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 		rc = regulator_enable(led->flash_cfg->torch_boost_reg);
 		if (rc) {
 			dev_err(&led->spmi_dev->dev,
 				"Regulator enable failed(%d)\n", rc);
 				return rc;
 		}
+#endif
+#ifdef OPPO_USE_EXTERNAL_CHARGER
+		qpnp_flash_reg_en(led,true);
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 		led->flash_cfg->torch_on = true;
 	}
 	return 0;
@@ -894,13 +1023,21 @@ regulator_turn_off:
 			dev_err(&led->spmi_dev->dev,
 				"Enable reg write failed(%d)\n", rc);
 		}
-
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 		rc = regulator_disable(led->flash_cfg->torch_boost_reg);
 		if (rc) {
 			dev_err(&led->spmi_dev->dev,
 				"Regulator disable failed(%d)\n", rc);
 			return rc;
 		}
+#endif
+#ifdef OPPO_USE_EXTERNAL_CHARGER
+		qpnp_flash_reg_en(led,false);
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 		led->flash_cfg->torch_on = false;
 	}
 	return 0;
@@ -2670,6 +2807,9 @@ static int __devinit qpnp_get_config_flash(struct qpnp_led_data *led,
 		led->flash_cfg->enable_module = FLASH_ENABLE_LED_0;
 		led->flash_cfg->current_addr = FLASH_LED_0_CURR(led->base);
 		led->flash_cfg->trigger_flash = FLASH_LED_0_OUTPUT;
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 		if (!*reg_set) {
 			led->flash_cfg->flash_boost_reg =
 				regulator_get(&led->spmi_dev->dev,
@@ -2684,7 +2824,9 @@ static int __devinit qpnp_get_config_flash(struct qpnp_led_data *led,
 			*reg_set = true;
 		} else
 			led->flash_cfg->flash_reg_get = false;
-
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 		if (led->flash_cfg->torch_enable) {
 			led->flash_cfg->second_addr =
 						FLASH_LED_1_CURR(led->base);
@@ -2693,6 +2835,9 @@ static int __devinit qpnp_get_config_flash(struct qpnp_led_data *led,
 		led->flash_cfg->enable_module = FLASH_ENABLE_LED_1;
 		led->flash_cfg->current_addr = FLASH_LED_1_CURR(led->base);
 		led->flash_cfg->trigger_flash = FLASH_LED_1_OUTPUT;
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 		if (!*reg_set) {
 			led->flash_cfg->flash_boost_reg =
 					regulator_get(&led->spmi_dev->dev,
@@ -2707,7 +2852,9 @@ static int __devinit qpnp_get_config_flash(struct qpnp_led_data *led,
 			*reg_set = true;
 		} else
 			led->flash_cfg->flash_reg_get = false;
-
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 		if (led->flash_cfg->torch_enable) {
 			led->flash_cfg->second_addr =
 						FLASH_LED_0_CURR(led->base);
@@ -2718,6 +2865,10 @@ static int __devinit qpnp_get_config_flash(struct qpnp_led_data *led,
 	}
 
 	if (led->flash_cfg->torch_enable) {
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
+	
 		if (of_find_property(of_get_parent(node), "torch-boost-supply",
 									NULL)) {
 			led->flash_cfg->torch_boost_reg =
@@ -2729,8 +2880,17 @@ static int __devinit qpnp_get_config_flash(struct qpnp_led_data *led,
 					"Torch regulator get failed(%d)\n", rc);
 				goto error_get_torch_reg;
 			}
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 			led->flash_cfg->enable_module = FLASH_ENABLE_MODULE;
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 		} else
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 			led->flash_cfg->enable_module = FLASH_ENABLE_ALL;
 		led->flash_cfg->trigger_flash = FLASH_STROBE_SW;
 	}
@@ -2790,10 +2950,21 @@ static int __devinit qpnp_get_config_flash(struct qpnp_led_data *led,
 	return 0;
 
 error_get_torch_reg:
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 	regulator_put(led->flash_cfg->torch_boost_reg);
-
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 error_get_flash_reg:
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 	regulator_put(led->flash_cfg->flash_boost_reg);
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 	return rc;
 
 }
@@ -3154,7 +3325,7 @@ static int __devinit qpnp_leds_probe(struct spmi_device *spmi)
 	int rc, i, num_leds = 0, parsed_leds = 0;
 	const char *led_label;
 	bool regulator_probe = false;
-
+	u8 reg = 0xB2;
 	node = spmi->dev.of_node;
 	if (node == NULL)
 		return -ENODEV;
@@ -3208,6 +3379,17 @@ static int __devinit qpnp_leds_probe(struct spmi_device *spmi)
 				"Failure reading max_current, rc =  %d\n", rc);
 			goto fail_id_check;
 		}
+		
+		#ifdef VENDOR_EDIT //yixue.ge add for modify max light
+		rc = of_property_read_u32(temp, "qcom,max-duty",
+					&led->max_duty);
+		if (rc < 0) {
+			dev_err(&led->spmi_dev->dev,
+				"Failure reading max_level, rc =	%d\n", rc);
+			led->max_duty = 255;
+		}
+		#endif
+		
 
 		rc = of_property_read_u32(temp, "qcom,id", &led->id);
 		if (rc < 0) {
@@ -3279,6 +3461,10 @@ static int __devinit qpnp_leds_probe(struct spmi_device *spmi)
 		if (rc < 0)
 			goto fail_id_check;
 
+		#ifdef VENDOR_EDIT//Fanhong.Kong@ProDrv,2014.5.26 add for OTG
+		spmi_ext_register_writel(led->spmi_dev->ctrl,1,0xD35A,&reg,1);
+		#endif/*VENDOR_EDIT*/
+		
 		rc = qpnp_led_set_max_brightness(led);
 		if (rc < 0)
 			goto fail_id_check;
@@ -3388,12 +3574,18 @@ static int __devexit qpnp_leds_remove(struct spmi_device *spmi)
 			break;
 		case QPNP_ID_FLASH1_LED0:
 		case QPNP_ID_FLASH1_LED1:
+/* OPPO 2014-3-25 zhengrong.zhang modify begin for flash-boost-supply control */
+#ifdef VENDOR_EDIT
+#ifndef OPPO_USE_EXTERNAL_CHARGER
 			if (led_array[i].flash_cfg->flash_reg_get)
 				regulator_put(led_array[i].flash_cfg-> \
 							flash_boost_reg);
 			if (led_array[i].flash_cfg->torch_enable)
 				regulator_put(led_array[i].flash_cfg->\
 							torch_boost_reg);
+#endif
+#endif
+/* OPPO 2014-3-25 zhengrong.zhang modify end */
 			sysfs_remove_group(&led_array[i].cdev.dev->kobj,
 							&led_attr_group);
 			break;

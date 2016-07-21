@@ -23,6 +23,7 @@
 #include <linux/init.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/io.h>
@@ -229,8 +230,11 @@ qup_i2c_interrupt(int irq, void *devid)
 	uint32_t op_flgs = 0;
 	int err = 0;
 
-	if (pm_runtime_suspended(dev->dev))
-		return IRQ_NONE;
+	if (pm_runtime_suspended(dev->dev)) {
+		dev_err(dev->dev, "%s:%d\n", __func__, __LINE__);
+		return IRQ_HANDLED;
+	}
+
 
 	status = readl_relaxed(dev->base + QUP_I2C_STATUS);
 	status1 = readl_relaxed(dev->base + QUP_ERROR_FLAGS);

@@ -1059,6 +1059,11 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 	int override_rlimit;
 	int ret = 0, result;
 
+	#ifdef VENDOR_EDIT
+	//LinJie.Xu@Prd.SysSrv.USB, 2014/03/26, Add for debug 
+	 printk(KERN_DEBUG "[%d:%s] sig %d to [%d:%s]\n",current->pid, current->comm, sig, t->pid, t->comm);    
+	#endif /* VENDOR_EDIT */
+
 	assert_spin_locked(&t->sighand->siglock);
 
 	result = TRACE_SIGNAL_IGNORED;

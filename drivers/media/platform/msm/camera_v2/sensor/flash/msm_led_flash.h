@@ -51,6 +51,10 @@ struct msm_led_flash_ctrl_t {
 	struct msm_flash_fn_t *func_tbl;
 	struct msm_camera_sensor_board_info *flashdata;
 	struct msm_led_flash_reg_t *reg_setting;
+	#ifdef VENDOR_EDIT
+      //lingjianing add for blink test
+	struct delayed_work dwork;
+	#endif
 	const char *flash_trigger_name[MAX_LED_TRIGGERS];
 	struct led_trigger *flash_trigger[MAX_LED_TRIGGERS];
 	uint32_t flash_op_current[MAX_LED_TRIGGERS];

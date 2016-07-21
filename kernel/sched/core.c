@@ -1682,9 +1682,21 @@ static void try_to_wake_up_local(struct task_struct *p)
 {
 	struct rq *rq = task_rq(p);
 
-	if (WARN_ON(rq != this_rq()) ||
-	    WARN_ON(p == current))
-		return;
+#ifndef VENDOR_EDIT
+    //Lycan.Wang@Prd.BasicDrv, 2014-05-22 Modify for here rq lock held may cause a deadlock
+    //https://www.codeaurora.org/cgit/quic/la//kernel/msm/commit/?id=df0b728e930745babf284bf68d8c6a35afdb86c4
+    if (WARN_ON(rq != this_rq()) ||
+            WARN_ON(p == current))
+        return;
+#else /* VENDOR_EDIT */
+    if (rq != this_rq() || p == current) {
+        printk_sched("%s: Failed to wakeup task %d (%s), rq = %p, this_rq = %p, p = %p, current = %p\n",
+                __func__, task_pid_nr(p), p->comm, rq,
+                this_rq(), p, current);
+        return;
+    }
+#endif /* VENDOR_EDIT */
+
 
 	lockdep_assert_held(&rq->lock);
 
@@ -6947,7 +6959,6 @@ int in_sched_functions(unsigned long addr)
 
 #ifdef CONFIG_CGROUP_SCHED
 struct task_group root_task_group;
-LIST_HEAD(task_groups);
 #endif
 
 DECLARE_PER_CPU(cpumask_var_t, load_balance_tmpmask);
